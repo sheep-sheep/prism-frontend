@@ -16,7 +16,7 @@ from timer import timed
 from zonal_stats import calculate_stats
 
 from app.database.alert_database import AlertsDataBase
-from app.database.alert_model import AlertModel
+from app.database.alert_model import AlertModel, AlchemyEncoder
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -103,28 +103,57 @@ def stats():
     return jsonify(features)
 
 
+@app.route('/alerts-all', methods=['GET'])
+def alerts_all():
+    results = alert_db.readall()
+    return Response(json.dumps(results, cls=AlchemyEncoder), mimetype='application/json')
+
+
 @app.route('/alerts', methods=['POST', 'GET'])
 def alerts():
     if request.method == 'POST':
-        if request.is_json:
-            data = json.loads(request.get_data())
-            logger.info('Received body: {}'.format(data))
-            alert = AlertModel(**data)
-            try:
-                alert_db.write(alert)
-                return Response(response='Success', status=200)
-            except Exception as e:
-                logger.error(e)
-                return Response(
-                    response='500: OperationalError.',
-                    status=500
-                )
-        else:
-            logger.error('Unrecognized operation.')
-            return Response(
-                response='500: Unrecognized operation.',
-                status=500
-            )
+        return _write_alert(request)
+    elif request.method == 'GET':
+        return _read_alert_id(request)
+    else:
+        return Response(
+            response='500: OperationalError',
+            status=500
+        )
+
+
+def _write_alert(request):
+    if not request.is_json:
+        return Response(
+            response='500: InvalidInput',
+            status=500
+        )
+    data = json.loads(request.get_data())
+    logger.info('Received body: {}'.format(data))
+    alert = AlertModel(**data)
+    try:
+        alert_db.write(alert)
+        return Response(response='Success', status=200)
+    except Exception as e:
+        logger.error(e)
+        return Response(
+            response='500: OperationalError',
+            status=500
+        )
+
+
+def _read_alert_id(request):
+    try:
+        results = alert_db.read(AlertModel.id == int(request.args.get('id')))  # matching an alert id
+        logger.info('Received body: {}'.format(results))
+        return Response(json.dumps(results, cls=AlchemyEncoder), mimetype='application/json')
+    except Exception as e:
+        logger.error(e)
+        return Response(
+            response='500: OperationalError',
+            status=500
+        )
+
 
 @app.route('/demo', methods=['GET'])
 @timed
